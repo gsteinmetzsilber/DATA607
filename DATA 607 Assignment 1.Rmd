@@ -1,0 +1,60 @@
+---
+title: "DATA607 Assignment 1"
+author: "Gavriel Steinmetz-Silber"
+date: "2023-09-04"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+
+Article: The Republican Path To A House Majority Goes Through The Suburbs
+Link: https://fivethirtyeight.com/features/the-republican-path-to-a-house-majority-goes-through-the-suburbs/ 
+
+This article, "The Republican Path To A House Majority Goes Through The Suburbs," predicts a considerable role that suburban voters were to play in the 2022 elections for the House of Representatives. The author uses an "urbanization index" to quantify how rural or urban a district is, and used that index to group districts into one of six categories (namely: Dense Urban, Urban-Suburban, Dense Suburban, Suburban-Exurban, Rural-Exurban and Mostly Rural). Finally, the author matched the districts' groupings with polls quantifying which districts are most politically competitive, to demonstrate both that Dense Suburban and Suburban-Exurban districts were disproportionately politically competitive and that Republicans were likely to win more seats in those districts. 
+
+
+# Data Transformation
+
+The data is transformed to only preserve those columns that are either directly pertinent to the analysis or else could be (in my opinion) quite useful for further analysis. Those columns are state, congressional_district, urban_index (the higher the score, the more urban the district), the grouping (e.g. Dense Urban or Mostly Rural), and partisan_lean (positive numbers reflect a Democratic lean in a district, negative numbers reflect a Republican mean, and smaller absolute values reflect less of a political lean). 
+
+```{r}
+library(readr)
+library(dplyr)
+
+#read csv from 538 URL
+csv_url <- "https://raw.githubusercontent.com/fivethirtyeight/data/master/district-urbanization-index-2022/urbanization-index-2022.csv"
+data <- read.csv(url(csv_url))
+
+#preserve only the most relevant columns
+data <- data %>% 
+  select(state, cd, pvi_22, urbanindex, grouping)
+
+#rename variables for clarity
+data <- data %>% 
+  rename(congressional_district = cd)
+data <- data %>% 
+  rename(partisan_lean = pvi_22)
+data <- data %>% 
+  rename(urban_index = urbanindex)
+
+#make partisan_lean the final column
+data <- data %>% 
+  select(state, congressional_district, urban_index, grouping, partisan_lean)
+
+head(data)
+
+```
+
+# Conclusions 
+Incidentally, I was recently rewatching one of the 2020 presidential debates, and I was struck by the numerous references to the suburbs. This article does a lot to explain why that might be the case; suburban districts played a major role in previous elections. It would be quite interesting to update this research for the upcoming elections, especially to highlight whether these districts still play a major role, and if so, which party has the edge. 
+
+There are two other interesting ways I'm thinking about how this research could be extended. First, the article notes that a "seat-by-seat count likely underestimates the GOP’s potential to capture suburban seats" as elections are not independent of one another. It appears that the author took this point into account in a further model, but it would be useful to note which elections happen first and how subsequent elections are likely to be impacted accordingly. This also suggests a lesser degree of confidence in overall results than a seat-by-seat count, since if Democrats win the early House elections, the later elections might swing their way. It would be helpful to get a sense of the difference confidence levels in the models.
+
+Second, while it is useful to think about urban versus suburban districts, it might be interesting to see if there are more direct measures of why suburban districts might lean Democrat or Republican. Specifically, the majority views in politically competitive districts could be mapped to poll results in those districts so that we could learn which issues are especially predictive of polling in suburban districts. 
+
+Still, the article's emphasis on the politically competitive nature and political leanings of suburban districts alone does a lot to explain politicians' rhetoric and renewed attention on specific issues that (ostensibly) most impact suburban residents' votes. 
+
