@@ -1,0 +1,79 @@
+---
+title: "DATA607 Assignment 2"
+author: "Gavriel Steinmetz-Silber"
+date: "2023-09-11"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+For this assignment, I surveyed a number of my friends, asking them how they would rate six popular movies: Oppenheimer, Barbie, Uncut Gems, Borat 2, Dune, and Elvis. I collected the data using a simple Google Forms. I then created a results table in SQL, and normalized by creating the following tables as well: people, films, and reviews. The SQL code is in my Github, and in this document I'll outline loading the data into R as well as some further work I did in RR.
+
+library(RMySQL)
+library(dplyr)
+library(ggplot2)
+
+## Loading information from SQL
+
+
+```{r}
+#conn = dbConnect(
+#       MySQL(),
+#       user = 'root',
+#       password = '[password]',
+#       dbname = 'movie_reviews',
+#       host = 'localhost'
+#   )
+
+results = dbGetQuery(conn,"SELECT * FROM results")
+people = dbGetQuery(conn,"SELECT * FROM people")
+films = dbGetQuery(conn,"SELECT * FROM films")
+reviews = dbGetQuery(conn,"SELECT * FROM reviews_all")
+```
+
+I noticed a small error I made (better late than never); in films, I had the column film_id but in reviews I had the column film_ID. I quickly rename the column in films here:
+
+```{r}
+films = films %>% 
+  rename(film_ID = film_id)
+```
+
+## Handling missing data 
+
+Because there were relatively few respondents, the most reasonable way to handle missing data was simply to exclude movies that didn't meet a certain threshold of reviews:
+
+```{r}
+filtered_reviews = reviews %>% 
+  group_by(film_ID) %>% 
+  filter(sum(is.na(review), na.rm = TRUE) <= 0.7 * nrow(people))
+```
+
+## Basic visualizations
+
+To visualize the ratings, I didn't have much interest in counting the non-responses (after all, I already accounted for those to some degree). I filtered those non-responses out: 
+
+```{r}
+filtered_reviews_nonNA = filtered_reviews %>%
+  filter(!is.na(review)) 
+```
+
+I also knew that if I use the reviews table to visualize the data, the films would be referenced using their id, which is not particularly insightful. I added the film names into the table and then created barplots.
+
+```{r}
+filtered_reviews_nonNA = filtered_reviews_nonNA %>%
+  left_join(films, by = "film_ID")
+
+
+ggplot(filtered_reviews_nonNA, aes(x = as.factor(review))) + 
+  geom_bar(stat = "count", fill = "blue") + 
+  labs(title = "Ratings for Movies", x ="Rating" , y = "Count") +
+  facet_wrap(~film_name, ncol = 2)
+```
+
+
+
+
