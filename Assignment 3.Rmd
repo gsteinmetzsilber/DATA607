@@ -1,0 +1,172 @@
+---
+title: "DATA607 - Assignment 3"
+author: "Gavriel Steinmetz-Silber"
+date: "2023-09-18"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Question 1
+
+Using the 173 majors listed in fivethirtyeight.com’s College Majors dataset [https://fivethirtyeight.com/features/the-economic-guide-to-picking-a-college-major/], provide code that identifies the majors that contain either "DATA" or "STATISTICS"
+
+```{r}
+library(dplyr)
+library(stringr)
+library(readr) 
+
+csv_url <- "https://raw.githubusercontent.com/fivethirtyeight/data/15f210532b2a642e85738ddefa7a2945d47e2585/college-majors/majors-list.csv"
+majors <- read.csv(url(csv_url))
+
+majors[str_detect(majors$Major, "DATA"), ]
+majors[str_detect(majors$Major, "STATISTICS"), ]
+```
+
+The majors that contain either "DATA" or "STATISTICS" are: "Computer Programming and Data Processing," "Management Information Systems and Statistics," and "Statistics and Decision Science."
+
+## Question 2
+
+Write code that transforms the data below:
+[1] "bell pepper"  "bilberry"     "blackberry"   "blood orange"
+[5] "blueberry"    "cantaloupe"   "chili pepper" "cloudberry"  
+[9] "elderberry"   "lime"         "lychee"       "mulberry"    
+[13] "olive"        "salal berry"
+
+Into a format like this:
+
+c("bell pepper", "bilberry", "blackberry", "blood orange", "blueberry", "cantaloupe", "chili pepper", "cloudberry", "elderberry", "lime", "lychee", "mulberry", "olive", "salal berry")
+
+```{r}
+original <- '[1] "bell pepper"  "bilberry"     "blackberry"   "blood orange"
+[5] "blueberry"    "cantaloupe"   "chili pepper" "cloudberry"  
+[9] "elderberry"   "lime"         "lychee"       "mulberry"    
+[13] "olive"        "salal berry"'
+
+#splitting, using "" as delimiter
+split <- unlist(strsplit(original, '"'))
+#remove [#]
+split <-str_remove(split, "\\[\\d+\\]")
+#remove whitespace unless they immediately follow [a-z]
+split <-str_remove(split, "\\s+(?![a-z])")
+#remove empty strings
+split <- split[split != ""]
+
+#adding c() and commas
+final <- paste('c("', paste(split, collapse = '", "'), '")')
+cat(final)
+
+```
+
+## Question 3
+
+**Describe, in words, what these expressions will match:**
+
+### (.)\1\1
+
+```{r}
+regex_testing <- c("lol", "loll", "lolll")
+pattern = "(.)\1\1"
+matches <- str_extract(regex_testing, pattern)
+matches
+```
+
+While it appears that the pattern is meant to identify three consecutive characters (i.e. any character, and then that character again, and that character again), the pattern isn't working because the references to the capturing group require two backslashes. If there are, in fact, two backslashes, the pattern should work as I described: 
+
+
+```{r}
+regex_testing <- c("lol", "loll", "lolll")
+pattern = "(.)\\1\\1"
+matches <- str_extract(regex_testing, pattern)
+matches
+```
+
+
+### "(.)(.)\\2\\1"
+
+
+```{r}
+regex_testing <- c("lol", "loll", "lolll", "haha", "ahha", "aaaa")
+pattern = "(.)(.)\\2\\1"
+matches <- str_extract(regex_testing, pattern)
+matches
+```
+
+This expression will match strings that have one character, followed by two of a character, followed by the first character again. Of course, both characters can be the same such that the patter will match strings that have a character four times in a row.
+
+### "(..)\1"
+
+```{r}
+regex_testing <- c("lol", "loll", "lolll", "haha", "ahha", "aaaa", "banana")
+pattern = "(..)\1"
+matches <- str_extract(regex_testing, pattern)
+matches
+```
+
+It looks like this expression was meant to match strings that have some two characters (not necessarily the same ones) repeated twice, e.g. the "anan" in "banana." Once again, it'll work if there are two backslashes: 
+```{r}
+regex_testing <- c("lol", "loll", "lolll", "haha", "ahha", "aaaa", "banana")
+pattern = "(..)\\1"
+matches <- str_extract(regex_testing, pattern)
+matches
+```
+
+
+### "(.).\\1.\\1"
+
+```{r}
+regex_testing <- c("lol", "loll", "lolll", "haha", "ahha", "aaaa", "rorar", "h%h$h")
+pattern = "(.).\\1.\\1"
+matches <- str_extract(regex_testing, pattern)
+matches
+```
+
+This expression will match strings that have a character, followed by any character, followed by the first character, followed by any character, then followed by the first character again. I couldn't think of any real words with that pattern off the top of my head but "rorar" fits that pattern. 
+
+### "(.)(.)(.).*\\3\\2\\1"
+
+```{r}
+regex_testing <- c("lol", "loll", "lolll", "haha", "ahha", "aaaa", "rorar", "h%h$h", "abcdddcba", "!@#$$$#@!")
+pattern = "(.)(.)(.).*\\3\\2\\1"
+matches <- str_extract(regex_testing, pattern)
+matches
+```
+
+This expression will match strings that have a character, then another character, then another character, then another character one or more times, then the third character again, then the second character again, then the first character again. Again, I couldn't think of any real words that fit this pattern, but "abcdddcba" does. 
+
+
+## Question 4
+
+**Construct regular expressions to match words that:**
+
+### Start and end with the same character
+
+```{r}
+regex_testing <- c("lol", "loll", "lolll", "haha", "ahha", "aaaa", "rorar", "h%h$h", "abcdddcba", "!@#$$$#@!", "roar", "shambles", "a")
+pattern = "^(\\w)\\w*\\1$|^\\w$"
+matches <- str_extract(regex_testing, pattern)
+matches
+```
+
+In the latter part of my pattern, I accounted for one letter words (i.e. "a"). Also, I accounted for the whole word in my pattern (even though this was unnecessary). I did this out of convenience--I wanted to see the entire strings that contained matches.
+
+### Contain a repeated pair of letters (e.g. "church" contains "ch" repeated twice)
+
+```{r}
+regex_testing <- c("lol", "loll", "lolll", "haha", "ahha", "aaaa", "rorar", "h%h$h", "abcdddcba", "!@#$$$#@!", "roar", "shambles", "a", "church", "paragraph")
+pattern = "\\w*(\\w)(\\w)\\w*\\1\\2\\w*"
+matches <- str_extract(regex_testing, pattern)
+matches
+```
+
+### Contain one letter repeated in at least three places (e.g. "eleven" contains three "e"s)
+
+```{r}
+regex_testing <- c("lol", "loll", "lolll", "haha", "ahha", "aaaa", "rorar", "h%h$h", "abcdddcba", "!@#$$$#@!", "roar", "shambles", "a", "church", "paragraph", "eleven")
+pattern = "\\w*(\\w)\\w*\\1\\w*\\1\\w*"
+matches <- str_extract(regex_testing, pattern)
+matches
+```
+
