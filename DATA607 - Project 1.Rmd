@@ -1,0 +1,167 @@
+---
+title: "DATA607 - Project 1"
+author: "Gavriel Steinmetz-Silber"
+date: "2023-09-21"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Objective
+Given a text file with chess tournament results, create an R Markdown file that generates a .CSV file with the following information for all of the players:
+
+Player’s Name, Player’s State, Total Number of Points, Player’s Pre-Rating, and Average Pre Chess Rating of Opponents
+
+For the first player, the information would be:
+Gary Hua, ON, 6.0, 1794, 1605
+
+## Step 1: Loading libraries, reading the text
+
+```{r}
+library(tidyverse)
+
+chess_lines <- read_lines("https://raw.githubusercontent.com/gsteinmetzsilber/DATA607/project_1/Project1_Data.txt")
+head(chess_lines, 20)
+```
+Every third row is a series of hyphens, and all such rows are not helpful for our purposes.
+```{r}
+hyphen_rows <- seq(1, 196, 3)
+
+chess_lines <- chess_lines[-hyphen_rows]
+```
+
+Additionally, each observation currently takes up two rows:
+
+From name rows, we can derive: Name, Total Points, Average Pre-Chess Rating of Opponents
+
+From non-name rows, we can derive: State, Player's Pre-Rating
+
+To simplify the work later on, I'll divide chess_lines into two:
+
+```{r}
+seq_name_rows <- seq(3, 130, 2)
+chess_name_rows <- chess_lines[seq_name_rows]
+seq_nonname_rows <- seq(4, 130, 2)
+chess_nonname_rows <- chess_lines[seq_nonname_rows]
+length(chess_name_rows) #confirming there are 64 name rows
+length(chess_nonname_rows) #confirming there are 64 non-name rows
+```
+
+## Step 2: Creating the dataframe
+
+### Player's Name
+
+```{r}
+head(chess_name_rows, 30)
+```
+
+From this sample, I can see two things that will influence my Regex pattern: 
+
+1. There's only one vertical bar followed by a space, and that's the vertical bar before the names.
+
+2. Players have at least two names, but some have three or four. One player has three names, and the final name is hyphenated. 
+
+```{r}
+pattern_names <- "(?<=[|]\\s)[A-Z]{0,30}\\s[A-Z]{0,30}(\\s[A-Z]{0,30}[-]?\\s?[A-Z]{0,30})?"
+names <-str_extract(chess_name_rows, pattern_names)
+
+names <- str_trim(names) #removing the extra whitespace
+names <- str_to_title(names) #fixing the capitalization
+
+chess_df <-data.frame(Name = names)
+head(chess_df)
+```
+
+### Player's State
+
+```{r}
+head(chess_nonname_rows, 10)
+```
+Again, two observations:
+
+1. States are the only text immediately preceding a space then a vertical bar.
+
+2. States are two letters
+
+```{r}
+pattern_states <- "[A-Z][A-Z](?=\\s[|])"
+states <- str_extract(chess_nonname_rows, pattern_states)
+
+chess_df$State <- states
+head(chess_df)
+```
+
+### Total Points
+
+The total points can be found in the name rows which I previewed earlier. The total points are the only part of these rows with a decimal and I'll use that to inform my pattern.
+
+```{r}
+pattern_points <- "\\d[.]\\d"
+points <- str_extract(chess_name_rows, pattern_points)
+
+chess_df$Total_Points <- points
+chess_df$Total_Points <- as.numeric(chess_df$Total_Points)
+head(chess_df)
+```
+
+### Player’s Pre-Rating
+
+Ratings are in the non-name rows. There is inconsistency in the spacing around the ratings, so to simplify, I'll remove all whitespace from those rows. Once that's done:
+
+1. Ratings will immediately be followed by an arrow
+
+2. Ratings are three or four digits. Some ratings then have a "P" and one or two digits. 
+
+```{r}
+chess_nonname_rows_nospace <- gsub("\\s", "", chess_nonname_rows)
+
+pattern_ratings <- "(\\d\\d\\d)(\\d)?(P\\d(\\d)?)?(?=[-][>])"
+ratings <- str_extract(chess_nonname_rows_nospace, pattern_ratings)
+ratings <- gsub("P", ".", ratings, fixed = TRUE) #replacing P with a decimal point
+
+chess_df$Pre_Rating <- ratings
+chess_df$Pre_Rating <- as.numeric(chess_df$Pre_Rating)
+chess_df$Pre_Rating <- round(chess_df$Pre_Rating)
+head(chess_df)
+
+```
+
+### Average Pre-Chess Rating of Opponents
+
+This average is not in any row, however the indices of all opponents are in chess_name_rows. As was previously the case, the spacing around these indices is a bit inconsistent. I'll remove whitespace to simplify matters. When that's complete:
+
+1. Opponent indices (and only opponent indices) will immediately follow a "W," "L," or "D."
+
+2. Opponent indices are either one or two digits (there are a total of 64 players).
+
+```{r}
+chess_name_rows_nospace <- gsub("\\s", "", chess_name_rows)
+
+pattern_opponents <- "(?<=[DWL])\\d(\\d)?"
+opponents <- str_extract_all(chess_name_rows_nospace, pattern_opponents)
+```
+Each line now has the list of opponents (by index) . We have the opponents' ratings in chess_df, so we can replace all the indices with the ratings of the corresponding players, average those ratings, and add them to the dataframe. 
+
+```{r}
+opponents <- lapply(opponents, as.numeric) #converting indices to "numeric"
+opponents_ratings <- lapply(opponents, function(index) chess_df$Pre_Rating[index])
+
+opponents_ratings_avg <- lapply(opponents_ratings, mean)
+opponents_ratings_avg <- unlist(opponents_ratings_avg)
+
+chess_df$Opponents_Average_Pre_Rating <- opponents_ratings_avg
+chess_df$Opponents_Average_Pre_Rating <- round(chess_df$Opponents_Average_Pre_Rating) #rounding
+head(chess_df)
+```
+
+## Step 3: Generating the .CSV 
+
+Now that the dataframe is in good shape, I can generate the .CSV file:
+
+```{r}
+write.csv(chess_df, "chess_tournament_results.csv")
+```
