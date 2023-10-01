@@ -1,0 +1,97 @@
+---
+title: "DATA607 - Assignment 4"
+author: "Gavriel Steinmetz-Silber"
+date: "2023-09-27"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Objective
+
+Tidy and transform a chart detailing arrival delays for two airlines across five destinations. Perform analysis to compare the arrival delays for the two airlines.
+ 
+### Tidying and transforming 
+
+```{r}
+data = read.csv("https://raw.githubusercontent.com/gsteinmetzsilber/DATA607/assignment-4/Alaska%20Am%20West%20Data%20-%20Sheet1.csv")
+data_df = data.frame(data)
+data_df
+```
+In the tidied dataframe, each column should be a variable, each row should be an observation, and each cell should be a value. If we had detailed information about each and every flight, we could have each row represent a distinct flight (as is the case with nycflights13::flights). We lack that detailed data, and so each row should represent an airline's flights to a particular destination. In other words, the columns should be: "Airline," "Destination," "On time," and "Delayed." 
+
+To this end, there are a few steps: 
+1. Rename the columns associated with airlines and status (on time/delayed)
+2. Eliminate the empty third row
+3. Ensure the delayed data is correctly associated with an airline
+4. Convert data to numeric
+5. Pivot longer so that the "destination_columns" become rows. There will be a new column ("Destinations) and another new temporary new column ("Values")
+6. Use the temporary "Values" column to pivot wider, creating "on time" and "delayed" columns.
+
+```{r}
+library(tidyverse)
+data_df = data_df %>% 
+  rename("Airline" = "X", "Status" = "X.1") %>% 
+  slice(-3) 
+
+data_df[2,1] = "ALASKA"
+data_df[4,1] = "AM WEST"
+
+destination_columns = c("Los.Angeles",	"Phoenix",	"San.Diego",	"San.Francisco",	"Seattle")
+data_df[destination_columns] = lapply(data_df[destination_columns], function(x) parse_number(gsub(",", "", x)))
+
+data_df = data_df %>%
+  pivot_longer(
+    cols = destination_columns, 
+    names_to = "Destination", 
+    values_to = "value"
+    ) %>% 
+  pivot_wider(
+    names_from = "Status", 
+    values_from = "value"
+    )
+
+data_df
+```
+
+### Analysis 
+
+Suppose I'm flying to one of these destinations, and I want to know which airline to choose to minimize the likelihood of a delay. 
+
+```{r}
+data_df = data_df %>% 
+  mutate(
+    percent_delayed = 100 * delayed / (`on time` + delayed)) %>% 
+  arrange(Destination)
+
+data_df
+```
+
+We can visualize this as well: 
+
+```{r}
+data_df %>% 
+  ggplot(aes(x = Destination, y = percent_delayed, fill = Airline)) +
+  geom_bar(stat = "identity", position = "dodge")
+```
+
+The bar chart is striking; For *all of these destinations*,  Am West flights are more likely to be delayed than Alaska flights. Suppose, however, I'm flying to a destination that's not listed in the dataframe. The bar chart might be misleading--perhaps the vast majority of Am West flights are to Phoenix where only around 8% of their flights are delayed. If that were the case, it's possible that, overall, a smaller percent of Am West flights are delayed than Alaska flights. I'll calculate a weighted average of the delays to account for this possibility.
+
+```{r}
+avg_al_delays = data_df %>% 
+  filter (Airline == "ALASKA") %>% 
+  summarize(
+    avg_al_delay = 100 * sum(delayed) / sum(`on time` + delayed)) 
+
+avg_am_delays = data_df %>% 
+  filter (Airline == "AM WEST") %>% 
+  summarize(
+    avg_am_delay = 100 * sum(delayed) / sum(`on time` + delayed)) 
+
+avg_al_delays
+avg_am_delays
+```
+
+In fact, it *would* have been a mistake to extrapolate from the bar chart above. 13% of the Alaska flights (that we know about) were delayed, whereas only 11% of the Am West flights (again, that we know about) were delayed. If I'm flying to some other destination, I may be more likely to minimize the chances of a delay by selecting an Am West flight. 
