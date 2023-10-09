@@ -1,0 +1,416 @@
+---
+title: "DATA607 - Project 2"
+author: "Gavriel Steinmetz-Silber"
+date: "2023-10-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Introduction  {.tabset}
+In this project, I'm analyzing three of the datasets that my classmates shared in the Discussion Board.
+
+## World Population 
+
+### Objective
+
+Matthew commented: "This details regional populations from the years 2000 to 2022. To tidy this dataset, I would collapse the year variables into a single grouping column, effectively making it into a long dataset. From there, we can easily graph population rates by year, and potentially by country." I'll also conduct an analysis centered on different continents, hypothesizing that rates of population growth are uneven across continents.
+
+### Tidying and cleaning
+
+```{r}
+library(tidyverse)
+data1 = read.csv("https://raw.githubusercontent.com/gsteinmetzsilber/DATA607/project-2/world_population.csv")
+names(data1)
+```
+The only columns of interest are "Country.Territory," "Continent," and the eight population columns.  
+
+```{r}
+data1 = data1 %>%
+  select(-1, -2, -4, -(14:17)) 
+```
+
+To make the data tidy, each row must be an observation of a country's population in a specific year.
+
+```{r}
+data1 = data1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = "Year",
+    values_to = "Population"
+  )
+
+data1$Year = parse_number(data1$Year) #Year column should be only numeric to make further analysis possible
+
+head(data1, 10)
+```
+### Analysis 
+
+I start by considering how the world population, in total, has changed from 1970 to 2022.
+
+```{r}
+data1 %>% 
+  group_by(Year) %>% 
+  summarize(total_pop = sum(Population)) %>% 
+  ggplot(aes(x = Year, y = total_pop)) + 
+  geom_point() +
+  geom_line() + 
+  labs(title = "World Population (1970-2022)", x = "Year", y = "Population")
+```
+
+The world population has grown at a steady rate over these 50 years. I'm also interested in continents' populations over time. In particular, I'm curious about whether different continents have experienced different growth rates. To test this quickly (before analyzing more deeply), I'll create a similar plot, this time grouping by continent:
+
+```{r}
+data1 %>% 
+  group_by(Continent,Year) %>% 
+  summarize(total_pop = sum(Population)) %>% 
+  ggplot(aes(x = Year, y = total_pop, color = Continent, group = Continent)) + 
+  geom_point() +
+  geom_line() + 
+  labs(title = "Continents' Populations (1970-2022)", x = "Year", y = "Population")
+```
+
+This plot shows that Asia is by far the most populous continent. It also appears that continents' aside from Asia and Africa are not growing much. To test this further, I'll calculate countries' population growth rates. The years in the dataset are not spaced equally; I'll calculate 10-year growth rates, disregarding the years 2015 and 2022. 
+
+\[ \text{ten year growth rate} = \frac{\text{population at Year X} - \text{population at Year (X-10)}}{\text{population at Year (X-10)}} \times 100\ \]
+
+Because we don't have the value for 1960, we don't want to calculate growth rates for 1970. I account for this with an if/else statement:
+
+```{r}
+decades_only = data1 %>% 
+  filter(Year %% 10 == 0) 
+
+decades_only %>% 
+    group_by(Country.Territory) %>% 
+    arrange(Continent, Country.Territory, Year) %>% 
+    mutate(
+        ten_year_growth = ifelse(Year == min(Year), 0, Population - lag(Population)), 
+        ten_year_growth_rate = (ten_year_growth / lag(Population)) * 100
+    )
+```
+
+This allows us to see the ten-year growth rates for countries (as Matthew suggested). However, there are so many countries and it's nearly impossible to get a sense of continents' growth rates. I calculate and visualize that below: 
+
+```{r}
+decades_only %>%
+  group_by(Continent, Year) %>%
+  summarize(
+    total_pop = sum(Population) #summing up each combination of continent/year
+  ) %>%
+  group_by(Continent) %>% # need to be able to compare diff years so the grouping can only be by continent
+  arrange(Continent, Year) %>%
+  mutate(
+    total_ten_year_growth = ifelse(Year == min(Year), 0, total_pop - lag(total_pop)),
+    total_ten_year_growth_rate = (total_ten_year_growth / lag(total_pop, default = first(total_pop))) * 100) %>% 
+  ggplot(aes(x = Year, y = total_ten_year_growth_rate, color = Continent, group = Continent)) + 
+  geom_line() + 
+  geom_point() +
+  labs(title = "Populations by Continent (1970-2022)", 
+       subtitle = "10-Year Growth Rates",
+       x = "Year", 
+       y = "10-Year Growth Rate")
+```
+
+The results are telling. Europe's population is barely growing, and that trend has been in place for the last 20 years. Asia has an enormous population, as we saw earlier, but the rate of growth is sinking fast (however, it's still quite high). North and South America are similarly experiencing a drop in population growth rate. The only anomaly (excluding the relatively minuscule Oceania) is Africa, where the 10-year growth rate has hovered around 30% since 1990. 
+
+### Conclusion and recommendations
+
+The threats of overpopulation are real, and include excessively high demand for limited resources and environmental harms. But there are also many costs associated with shrinking populations, including smaller workforces, higher dependency ratios, and the inability to fund entitlement programs such as Social Security. Moreover, it's not clear that countries are equipped to deal with shrinking populations since this is a relatively new type of challenge. Yet all large continents, aside from Africa, are likely to undergo challenges associated with shrinking populations in the near future. 
+
+Individuals can consult the decades_only dataframe to see how their country's population growth rate has changed since 1970. Some countries, especially those in Europe, appear especially vulnerable. Policymakers in these countries must consider how they'll approach these challenges. Some problems may be able to be attacked on an individual level. For example, perhaps countries can fund their entitlement programs in new ways, or expect workers to work for more years. On the other hand, there are larger-scale solutions as well. For example, policymakers can directly impact population growth rates with laxer immigration policies. Incidentally, there are many people who would like to immigrate to some of the wealthier countries where there are lower population growth rates. 
+
+## Airbnb Keywords
+
+### Objective
+
+This dataset includes Airbnb New York city listings from 2019. Ron wondered whether "keywords such as 'cozy', 'clean', 'quiet', 'lovely', 'garden', 'perfect', etc., would have any bearing on the price." In essence, we're attempting to isolate language as a causal factor. As such, I steered away from keywords such as "garden." After all, such listing may be higher due to the garden, and not because of the use of the word "language."
+
+I selected four words that I saw come up a number of times. Those are: "cozy," "beautiful," "perfect," and "best." 
+
+These adjectives fall into two categories:
+
+1. "Cozy" and "beautiful" are typical adjectives, though of course they do have positive connotations. But one apartment could be cozy while another could be cozier.
+
+2. "Perfect" and "best" are more extreme. "Perfect" is an absolute adjective. If one apartment is perfect, no other apartment can be more perfect. "Best" is a superlative for the adjective "good." No apartment can be better than the best apartment.  
+
+I'll evaluate these two categories separately, and gauge whether regular adjectives as well as these more extreme adjectives were correlated with the price of New York Airbnb listings in 2019. 
+
+### Tidying and cleaning
+
+```{r}
+data2 = read.csv("https://raw.githubusercontent.com/gsteinmetzsilber/DATA607/project-2/AB_NYC_2019.csv")
+```
+
+The cost of a listing is heavily impacted by the area as well as the room_type. Because there may not be many listings in all neighborhoods, I'll ultimately evaluate listings by borough (neighbourhood_group). First, I have to make sure there are enough listings to evaluate, and drop the categories with relatively few listings.
+
+```{r}
+(borough_count = table(data2$neighbourhood_group))
+(room_type_count = table(data2$room_type))
+```
+I'll consider only Brooklyn and Manhattan, and only entire homes/apartments and private rooms. I'll then preserve only the names, boroughs, room types, and prices columns. 
+
+```{r}
+data2 = data2 %>% 
+  filter(
+    neighbourhood_group %in% c("Manhattan", "Brooklyn"),
+    room_type != "Shared room"
+  )%>%
+  select(-1, -(3:4), -(6:8), -(11:16))
+```
+
+Each row is now an observation of a listing in Manhattan/Brooklyn that's either an entire home/apartment or a private room.
+
+### Analysis 
+
+I begin by adding a new column for each adjective. I use the grepl function to search for the pattern (i.e. the adjective) in the name column. If there is a match, the function will return TRUE; if not, the function will return FALSE. 
+```{r}
+data2 = data2 %>% 
+  mutate(cozy = grepl("cozy", name, ignore.case = TRUE),
+         beautiful = grepl("beautiful", name, ignore.case = TRUE),
+         perfect = grepl("perfect", name, ignore.case = TRUE),
+         best = grepl("best", name, ignore.case = TRUE)
+         )
+```
+
+I want to ensure that there are a sufficient number of matches to proceed with all these adjectives: 
+
+```{r}
+sum(data2[, 5])
+sum(data2[, 6])
+sum(data2[, 7])
+sum(data2[, 8])
+```
+Certainly there are more typical adjectives than extreme adjectives. But there's a sizable number of all four adjectives, so I'll continue analyzing all. 
+
+I'll start by just taking a bird's eye view on the data. I'll find the median price when an adjective is used and the median price when the adjective is not used.
+
+```{r}
+cozy_overall = data2 %>% 
+  group_by(cozy) %>% 
+  summarize(median_price = median(price))
+cozy_overall
+
+beautiful_overall = data2 %>% 
+  group_by(beautiful) %>% 
+  summarize(median_price = median(price))
+beautiful_overall
+
+perfect_overall = data2 %>% 
+  group_by(perfect) %>% 
+  summarize(median_price = median(price))
+perfect_overall
+
+best_overall = data2 %>% 
+  group_by(best) %>% 
+  summarize(median_price = median(price))
+best_overall
+```
+Interestingly, the use of a typical adjective does not seem to be positively correlated with the price. In fact, listings with the word "cozy" actually had a lower median price ($93) than listings without the word cozy (\$124). However, the use of an "extreme" adjective, as I've been calling them, is positively correlated with higher prices. I'll examine those two adjectives--"perfect" and "best" more closely now. 
+
+```{r}
+perfect_medians = data2 %>% 
+  group_by(neighbourhood_group, room_type, perfect) %>% 
+  summarize (median_price = median(price)) %>% 
+  summarize(
+    median_perfect = median_price[perfect ==TRUE],
+    median_not_perfect = median_price[perfect == FALSE],
+    percent_diff = ((median_perfect - median_not_perfect) / median_not_perfect) * 100
+  )
+
+best_medians = data2 %>% 
+  group_by(neighbourhood_group, room_type, best) %>% 
+  summarize (median_price = median(price)) %>% 
+  summarize(
+    median_best = median_price[best ==TRUE],
+    median_not_best = median_price[best == FALSE],
+    percent_diff = ((median_best - median_not_best) / median_not_best) * 100
+  )
+
+perfect_medians %>% 
+  ggplot(aes(x = neighbourhood_group, y = percent_diff, fill = room_type)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    x = "Borough",
+    y = "Increase in Price (%)",
+    title = 'Increase in Price When Described as "Perfect"',
+    subtitle = "Comparing Median Prices (Airbnb 2019 Data)"
+  )
+
+
+best_medians %>% 
+  ggplot(aes(x = neighbourhood_group, y = percent_diff, fill = room_type)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+    labs(
+    x = "Borough",
+    y = "Increase in Price (%)",
+    title = 'Increase in Price When Described as "Best"',
+    subtitle = "Comparing Median Prices (Airbnb 2019 Data)"
+  )
+```
+
+There are a few interesting takeaways. First, the use of these extreme adjectives has a strong positive correlation with price for private rooms. This is true for both Brooklyn and Manhattan. Second, the use of extreme adjectives is positively correlated with price for entire homes/apartments in Brooklyn. Third, and perhaps most interestingly, listings for entire homes/apartments in Manhattan with extreme adjectives are associated with *lower* prices.    
+
+There are a few different reasons why entire homes/apartments might be the anomaly. Consider the median prices of the four permutations:
+
+```{r}
+data2 %>% 
+  group_by(neighbourhood_group, room_type) %>% 
+  summarize(median_price = median(price))
+```
+As expected, entire homes/apartments in Manhattan are most expensive. On the supply-side, perhaps listers are trying to compensate for worse listings by using extreme adjectives. But that would not explain why the other types of listings with extreme adjectives don't suffer accordingly. Perhaps, then, those who are willing to shell out more money for a listing are going to look further beyond the language in the listing than they might otherwise. Relatedly, on the supply-side, perhaps listers are trying to compensate for worse listings by using extreme adjectives. 
+
+### Conclusion and recommendations
+
+I've attempted to spot correlations between the language in Airbnb listings and the price of Airbnb listings for entire homes/apartments and private rooms in Manhattan and Brooklyn. There was not a positive correlation for the typical adjectives "cozy" and "beautiful." However, listings with the words "perfect" and "best" had a higher median price than listings without those words, except for entire homes/apartments in Manhattan; this is possibly due to an extra layer of caution exercised by would-be renters in this market.
+
+Those managing Airbnb properties may want to steer away from using generic adjectives, and perhaps focus instead on the redeeming properties of the listing insofar as they exist. They should feel more comfortable using extreme adjectives, including absolutes and superlatives, aside for on entire homes/apartments in Manhattan.
+
+Those scouring for Airbnb properties to rent should focus on the quality of the rooms, and they should make an effort to be disaffected by the language describing properties. Other tools for assessing quality exist, including, but not limited to, reviews, photos, and listed amenities. After all, more flowery language alone will not make for a better renting experience.
+
+## NYC: Neighborhood Financial Health
+
+### Objective
+
+Dirk commented: "The intention of this data set is to provide an easy reference tool for comparing neighborhoods, and to establish patterns in the relationship of NFH indicators to economic and demographic factors, such as race and income. This data has 52 columns and could certainty be tidied and/or transformed to make it more user friendly for data analysis. Inspecting the columns it seems like there are 5 goals, each with 5-8 indicators, outcome score, rank compared ot other areas and a narrative definition of the goal.... It would be interesting to compare and contrast the poverty rates, incomes and racial demogrpahics of each area with the outcome scores and ranks of the goals.
+
+Building off what Dirk said, I'll aim to do two things with my analysis:
+
+1. There are 5 goals, and I'll try to see if goal scores are correlated with one another. In other words, if a neighborhood has a high score for goal 1, are they also likely to have a high score for goal 2? This analysis will allow me to practice tidying some more.
+
+2. As Dirk suggested, I'll tie incomes and racial demographics of each area with an outcome score. I'll actually only do it for one specific goal, namely: Goal 3: Access to Quality Jobs & Income Supports. 
+
+### Tidying and cleaning
+
+```{r}
+data3 = read.csv("/Users/gavrielsteinmetz-silber/Desktop/Neighborhood_Financial_Health_Digital_Mapping_and_Data_Tool.csv")
+names(data3)
+head(data3$Neighborhoods, 10)
+
+```
+The two analyses listed in the Objectives require different treatments. I'll tidy and clean them separately. 
+
+For the first analysis, we need the neighborhoods, the goals, and the goal scores ("TotalOutcome").
+
+```{r}
+data3a = data3 %>% 
+  select(Neighborhoods, GoalName, TotalOutcome) %>% 
+   filter(startsWith(GoalName, "Goal"))
+```
+
+I'll now move to pivot wider such that each row is a neighborhood and includes all the goal scores.
+
+```{r}
+data3a = data3a %>% 
+  pivot_wider(
+    id_cols = Neighborhoods,
+    names_from = GoalName,
+    values_from = TotalOutcome
+  ) %>% 
+  relocate(`Goal 4: Financial Shocks`, .after = last_col()) %>% 
+  relocate(`Goal 5: Build Assets`, .after = last_col())
+```
+
+I'll also prepare a second dataframe for the second analysis. This one does not really require tidying, but there's cleaning warranted.
+
+```{r}
+data3b = data3 %>% 
+  filter(Goal == "Jobs & Income") %>% 
+  select(4, 8:13, 17) 
+
+head(data3b)
+```
+
+### Analysis
+
+I'll first attempt to answer my first question, namely: are goal scores correlated with one another? This is important because it'll suggest whether targeted interventions or more holistic interventions might be appropriate. 
+
+```{r}
+goal_columns = unique(data3a[(grep("^Goal", names(data3a)))])
+
+correlations = cor(goal_columns)
+correlations
+```
+As a reminder, the full descriptions of the goals are: 
+Goal 1: Access to Affordable, High-Quality Financial Services
+Goal 2: Access to Affordable, High-Quality Goods & Services
+Goal 3: Access to Quality Jobs & Income Supports
+Goal 4: Stable Housing & Capacity to Limit Financial Shocks
+Goal 5: Opportunities to Build Assets & Plan for the Future
+
+No goals have negative correlations with one another. Almost all goals have moderate to strong positive correlations with one another. The only weak positive correlation is between Goal 4 and Goal 5. It's a bit difficult to comprehend all the relationships from the matrix alone, so I'll visualize the matrix:
+
+```{r}
+library(ggcorrplot)
+ggcorrplot(correlations)
+
+```
+
+This visualization is helpful: again, we can clearly see that the goals are overall quite correlated with one another. But this helps us see that Goals 1 and 3 are especially correlated with the other goals. Many of these correlations are intuitive. For example, it stands to reason that the communities with access to quality jobs and income supports will also be the communities that have access to high quality goods and services (that they're affordable is perhaps less intuitive). Still, the correlations between the goals are useful for policymakers--a point I'll revisit in the conclusions section. 
+
+But for now, I'll turn to the second objective: To see whether there's a correlation between the incomes and demographics of an area with the area's score for Goal 3: Access to Quality Jobs & Income Supports. I'll start by just plotting the goal score and the median income: 
+
+```{r}
+data3b %>% 
+  ggplot(aes(x = Median_Income, y = TotalOutcome)) +
+  geom_point() +
+  geom_smooth(method= "lm") + 
+  labs(
+    x = "Median Income", 
+    y = "Jobs and Income Score" 
+  )
+```
+
+There's clearly a positive correlation between median income and the score for Goal 3. 
+
+```{r}
+percent_white = data3b %>% 
+  ggplot(aes(x = Perc_White, y = TotalOutcome)) +
+  geom_point() +
+  geom_smooth(method= "lm")
+
+percent_black = data3b %>% 
+  ggplot(aes(x = Perc_Black, y = TotalOutcome)) +
+  geom_point() +
+  geom_smooth(method= "lm")
+
+
+percent_asian = data3b %>% 
+  ggplot(aes(x = Perc_Asian, y = TotalOutcome)) +
+  geom_point() +
+  geom_smooth(method= "lm")
+
+percent_hispanic = data3b %>% 
+  ggplot(aes(x = Perc_Hispanic, y = TotalOutcome)) +
+  geom_point() +
+  geom_smooth(method= "lm")
+
+library(cowplot)
+plot_grid(percent_white, percent_black, percent_asian, percent_hispanic, ncol = 2)
+```
+
+Based on these plots, there is in fact a correlation between demographics and the score for Goal 3. Specifically, there's a positive correlation between Percent White and Goal 3 Score, a negative correlation between both Percent Black and Percent Hispanic with Goal 3 Score. There's no obvious correlation between Percent Asian and Goal 3 Score. 
+
+Disclaimer: this is the first time I'm trying this--there may be methodological errors up ahead. However, I'm curious about the impact that all these factors have on Goal 3 Score. Specifically, what is the significance of each of these variables? I'll attempt to conduct a linear regression analysis. I want to avoid excessive multicollinearity, so I'll calculate the correlations between these variables.
+
+```{r}
+cor(data3b[c("Median_Income", "Perc_White", "Perc_Black", "Perc_Hispanic", "Perc_Asian")])
+
+```
+I'll remove "Perc_White" as it has particularly high correlations with the other variables.
+
+```{r}
+formula = TotalOutcome ~ Median_Income + Perc_Black + Perc_Hispanic + Perc_Asian
+
+model = lm(formula, data = data3b)
+summary(model)
+```
+The F-statistic's low p-value suggests that the model as a whole is statistically significant. This seems to be driven primarily by median income which is positively correlated with the goal 3 score and has a very low p-value. Perc_Asian has a negative correlation with the goal 3 score, It's possible that the demographics variables are highly correlated with median income which may be why their p-values were high. Given these nuances (and frankly my inexperience with regressions), I am not taking much away from this analysis, aside from the high correlation between median income and the goal 3 score. 
+
+### Conclusion and recommendations 
+
+This analysis considered a dataset that has scores for five financial health-related goals for different areas of New York. In the first part of the analysis, I found that the scores for these goals are overall highly correlated with one another. For example, if an area has a high score for Goal 1, they are likely to have high scores for the other goals as well. Two goals are especially correlated with the other goals, namely: Goal 1: Access to Affordable, High-Quality Financial Services
+and Goal 3: Access to Quality Jobs & Income Supports. Because goals are correlated with one another, policymakers may want to consider interventions that address these goals simultaneously. The same neighborhood that could use support for Goal 1 likely needs support for other goals. So holistic approaches could be most effective.
+
+If the first part of my analysis touched on the "how," the second part of my analysis underscored the urgency of the matter. I considered one goal in particular, namely Goal 3: Access to Quality Jobs & Income Supports. I plotted the scores for these goals along with income and demographic data, and found that median income and percent White have a positive correlation with Goal 3 scores. A regression analysis highlighted the strong relationship between median income and Goal 3 scores. On the other hand, percent Black and percent Hispanic both have a negative correlation with Goal 3 scores. It's a cruel irony that communities with less money and historically underserved communities are also those that have less access to quality jobs and income supports. Policymakers and stakeholders can consider these correlations to expedite the implementation of interventions supporting the financial health of those neighborhoods that need them the most.  
+
